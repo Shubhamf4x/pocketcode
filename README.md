@@ -1,64 +1,128 @@
 # PocketCode
 
-PocketCode is a polished, mobile-first Flutter chat client for AI assistants. It stays deliberately focused: this app sends chat requests and renders markdown; it does **not** run a terminal, inspect/edit files, invoke tools, or autonomously execute coding tasks.
+PocketCode is a mobile-first chat client for Android that connects to any
+OpenAI-compatible or Anthropic-compatible AI API. It is a bring-your-own-key
+client: you provide the endpoint and API key, and PocketCode handles streaming,
+conversation management, and multimodal input in a clean, distraction-free
+interface.
+
+PocketCode is a chat client only. It does not run commands, access the
+filesystem beyond user-selected attachments, or act on your behalf.
 
 ## Features
 
-- Multiple persisted providers with add/edit/delete forms: name, API/base URL, secure API key, protocol, manual comma-separated models, and an explicit insecure-HTTP switch.
-- OpenAI-compatible streaming `POST /chat/completions` and model discovery `GET /models`.
-- Anthropic native streaming `POST /messages` (model discovery is manual for this protocol).
-- API roots preserve paths such as `/v1`; they do not blindly append `/v1`. Pasted full `/chat/completions` or `/messages` URLs are normalized.
-- UTF-8/SSE buffering handles chunk boundaries and multiline `data:` fields. Generation can be canceled; its per-request HTTP client and subscription are closed.
-- Markdown rendering with fenced code blocks, persisted conversation histories, new/select/delete conversations, retry, and partial cancellation/error status.
-- Per-conversation system prompt and temperature controls. Provider/conversation switching is disabled while generating.
-- Image and file attachments with multimodal request support (base64 parts for both OpenAI-compatible and Anthropic protocols), processed off the UI thread.
-- API keys are stored only with `flutter_secure_storage`; local histories and non-secret metadata use `shared_preferences` (not encrypted).
-- Provider stream errors are sanitized so API keys are never surfaced in error text or logs.
+- **Any provider** — connect to OpenAI, Anthropic, OpenRouter, Groq, Ollama,
+  LM Studio, or any endpoint exposing the OpenAI `chat/completions` or
+  Anthropic `messages` API shape.
+- **Real-time streaming** — responses render token-by-token over SSE, with
+  reliable chunk-boundary and multiline event handling.
+- **Multimodal input** — attach images and documents (PDF, DOCX, XLSX, TXT,
+  and more) and send them as base64 parts; images render inline in chat.
+- **Conversation management** — multiple saved conversations, rename, delete,
+  retry failed generations, and edit-and-regenerate any message you sent.
+- **Per-conversation controls** — independent system prompt and temperature
+  per conversation.
+- **Message actions** — long-press any message to copy, select text, or edit
+  and regenerate the response.
+- **Local-first storage** — conversations and settings live on-device in app
+  preferences; nothing is synced or sent anywhere except the provider you
+  configured.
+- **Secure key storage** — API keys are stored in Android Keystore-backed
+  encrypted storage and are never included in logs, error messages, or chat
+  exports.
 
-## Bootstrap (exact)
+## Requirements
 
-The repository includes a hand-authored README, so use the separate setup file if a generator would overwrite it:
+- An API endpoint and key from any compatible provider (OpenAI, Anthropic,
+  OpenRouter, a self-hosted gateway, etc.)
+- Android 5.0 (API 21) or later
+
+## Installation
+
+### From releases
+
+Download the APK for your device from the
+[releases page](https://github.com/Shubhamf4x/pocketcode/releases):
+
+| Asset | Device |
+|---|---|
+| `pocketcode-*-arm64-v8a.apk` | Most phones (2016 and later) — recommended |
+| `pocketcode-*-armeabi-v7a.apk` | Older 32-bit phones |
+| `pocketcode-*-x86_64.apk` | Emulators and Intel-based devices |
+| `pocketcode-*-universal.apk` | Any device |
+
+Enable installation from unknown sources when prompted, then open the APK.
+
+### Building from source
 
 ```bash
-flutter create --platforms=android,ios --project-name pocketcode .
-# If the command would overwrite this README, copy README.md and FLUTTER_SETUP.md
-# somewhere safe first, then restore the hand-authored files after generation.
+git clone https://github.com/Shubhamf4x/pocketcode.git
+cd pocketcode
 flutter pub get
-flutter run
+flutter build apk --release --split-per-abi
 ```
 
-This starter was authored against Flutter >=3.27 and Dart >=3.6. Flutter/Dart are not bundled here and this source has not been compiled in this environment.
+Output APKs are written to `build/app/outputs/flutter-apk/`. The project
+targets Flutter 3.27+ and Dart 3.6+.
 
-### Android internet permission and local HTTP development
+## Getting started
 
-Release Android builds need internet permission in `android/app/src/main/AndroidManifest.xml` inside `<manifest>`:
+1. Open **Providers** from the app bar and add a provider: name, base URL
+   (e.g. `https://api.openai.com/v1`), API key, and protocol.
+2. Pick a model from the dropdown — use **Discover models** to fetch the list
+   automatically (OpenAI-compatible providers only), or type model IDs
+   manually.
+3. Start chatting. Attach images or files with the **+** button.
 
-```xml
-<uses-permission android:name="android.permission.INTERNET" />
-```
+### Base URL notes
 
-For a trusted local development server only, add `android:usesCleartextTraffic="true"` to the `<application>` element (or a narrowly scoped network security config). Also enable **Allow insecure HTTP** for that provider in PocketCode. HTTPS is the default and safest choice; the app refuses HTTP unless explicitly opted in.
+- The base URL is the API root; the app appends the correct resource paths.
+- Pasting a full endpoint such as `.../v1/chat/completions` is normalized
+  automatically.
+- Plain `http://` is disabled unless explicitly enabled per provider, for
+  local development endpoints only (e.g. `http://127.0.0.1:8080/v1` for a
+  self-hosted model server).
 
-### iOS ATS and localhost development
+## Privacy and security
 
-For production, use HTTPS. For local development, add a narrowly scoped ATS exception for the local host/port in `ios/Runner/Info.plist` (for example, a `NSAppTransportSecurity` dictionary with `NSExceptionDomains` for `localhost`; do not disable ATS globally). Enable **Allow insecure HTTP** for that provider. A physical iOS device generally cannot reach its computer at `localhost`; use the computer's LAN address and a trusted development setup instead.
+- API keys are stored exclusively with `flutter_secure_storage` (Android
+  Keystore-backed encryption) and are redacted from all error output.
+- Conversations and attachments are stored locally on the device. Deleting a
+  conversation also deletes its attachment files.
+- The app makes network requests only to the provider endpoints you
+  configure. No telemetry, no analytics, no third-party services.
+- Attachment uploads are limited to 20 MB per file; files are encoded
+  off the UI thread to keep the interface responsive.
 
-## Configuration notes
+## Architecture
 
-- A base URL is the API root, for example `https://api.openai.com/v1`, `https://api.anthropic.com`, or `http://127.0.0.1:8080/v1` for explicitly enabled local development. A full pasted endpoint is accepted too.
-- OpenAI-compatible vendors should expose the conventional `/chat/completions` and optionally `/models` shape. Anthropic uses its native `/messages` shape and `anthropic-version: 2023-06-01`.
-- “Any API” is not automatic: a different protocol or response format requires a new adapter in `ApiClient`.
-- Chat history is local preference storage and is not encrypted. Treat device backups and unlocked devices accordingly. Keys never enter preferences, chat JSON, or application logs.
-- No default network request is made. Missing/invalid hosts and insecure URLs are rejected before sending.
+A concise overview for contributors:
 
-## Tests
+- `lib/models/` — JSON-serializable value objects (providers, conversations,
+  messages, attachments).
+- `lib/services/` — `ApiClient` (streaming HTTP + SSE parsing, protocol
+  adapters for OpenAI-compatible and Anthropic shapes), `StorageService`
+  (preferences and secure key storage).
+- `lib/state/` — `AppController`, a single `ChangeNotifier` owning
+  conversations, generation lifecycle, cancellation, and persistence.
+- `lib/screens/` — chat and provider management UI.
+- `lib/utils/` — endpoint URL normalization.
 
-The project includes tests for multiline/chunked SSE parsing, endpoint normalization and insecure HTTP policy, provider/conversation serializers, storage corruption handling, and multimodal request bodies:
+Only complete assistant messages are included in subsequent request contexts;
+canceled or failed generations are retained locally with their status for
+transparency but excluded from the API payload.
+
+## Testing
 
 ```bash
 flutter test
 ```
 
-## Safe setup file
+The suite covers SSE chunk-boundary and multiline parsing, endpoint
+normalization, request body construction for both protocols (including
+multimodal parts and identity handling), serializer round-trips, and storage
+corruption resilience.
 
-`FLUTTER_SETUP.md` repeats the generator-safe bootstrap and platform notes in case `flutter create` replaces generated project files. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map.
+## License
+
+See [LICENSE](LICENSE).
